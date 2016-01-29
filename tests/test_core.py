@@ -93,7 +93,7 @@ class TestTransitions(TestCase):
     def test_conditions(self):
         s = self.stuff
         s.machine.add_transition('advance', 'A', 'B', conditions='this_passes')
-        s.machine.add_transition('advance', 'B', 'C', unless=['this_fails'])
+        s.machine.add_transition('advance', 'B', 'C', unless=[s.this_fails])
         s.machine.add_transition('advance', 'C', 'D', unless=['this_fails',
                                                               'this_passes'])
         s.advance()
@@ -137,6 +137,14 @@ class TestTransitions(TestCase):
         m.add_transition('move', 'A', 'B')
         trans = m.events['move'].transitions['A'][0]
         trans.add_callback('after', 'increase_level')
+        m.model.move()
+        self.assertEquals(m.model.level, 2)
+
+    def test_before_after_callback_addition_callable(self):
+        m = Machine(Stuff(), states=['A', 'B', 'C'], initial='A')
+        m.add_transition('move', 'A', 'B')
+        trans = m.events['move'].transitions['A'][0]
+        trans.add_callback('after', m.model.increase_level)
         m.model.move()
         self.assertEquals(m.model.level, 2)
 
@@ -305,6 +313,37 @@ class TestTransitions(TestCase):
         m.to_B()
         self.assertTrue(m.before_state_change.called)
         self.assertTrue(m.after_state_change.called)
+
+    def test_generic_callbacks_callable(self):
+
+        before_mock = MagicMock()
+        after_mock = MagicMock()
+
+        m = Machine(None, states=['A', 'B'],
+                    before_state_change=before_mock,
+                    after_state_change=after_mock, send_event=True,
+                    initial='A', auto_transitions=True)
+
+        m.to_B()
+        self.assertTrue(before_mock.called)
+        self.assertTrue(after_mock.called)
+
+    def test_enter_exit_callbacks_callables(self):
+        exit_mock = MagicMock()
+        enter_mock = MagicMock()
+
+        # on_enter doesn't fire on initialisation so need a dummy start state
+        m = Machine(None, states=['dummy', 'A', 'B'], send_event=True,
+                    initial='dummy', auto_transitions=True)
+
+        m.on_exit_A(exit_mock)
+        m.on_enter_B(enter_mock)
+
+        m.to_A()
+        m.to_B()
+        self.assertTrue(exit_mock.called)
+        self.assertTrue(enter_mock.called)
+
 
     def test_pickle(self):
         import sys
