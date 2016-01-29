@@ -21,6 +21,22 @@ def listify(obj):
         return obj if isinstance(obj, (list, type(None))) else [obj]
 
 
+def resolve_callback(obj, callback, default=None):
+    """Check to see if callback is already a callable, otherwise resolve
+        callback using getattr() and the scope provided in obj.
+     Args:
+         obj (object): The scope to check for callback if it is not callable
+         callback (callable, string): A callable, or a string to be resolved
+            into a callable
+    Returns:
+        callable: Callable object
+    """
+    if callable(callback):
+        return callback
+    else:
+        return getattr(obj, callback, default)
+
+
 class State(object):
 
     def __init__(self, name, on_enter=None, on_exit=None,
@@ -47,14 +63,14 @@ class State(object):
         """ Triggered when a state is entered. """
         for oe in self.on_enter:
             event_data.machine.callback(
-                getattr(event_data.model, oe), event_data)
+                resolve_callback(event_data.model, oe), event_data)
         logger.info("Entered state %s" % self.name)
 
     def exit(self, event_data):
         """ Triggered when a state is exited. """
         for oe in self.on_exit:
             event_data.machine.callback(
-                getattr(event_data.model, oe), event_data)
+                resolve_callback(event_data.model, oe), event_data)
         logger.info("Exited state %s" % self.name)
 
     def add_callback(self, trigger, func):
@@ -85,7 +101,7 @@ class Transition(object):
                 model attached to the current machine which is used to invoke
                 the condition.
             """
-            predicate = getattr(event_data.model, self.func)
+            predicate = resolve_callback(event_data.model, self.func)
             if event_data.machine.send_event:
                 return predicate(event_data) == self.target
             else:
@@ -138,13 +154,13 @@ class Transition(object):
                             "return %s. Transition halted.", c.func, c.target)
                 return False
         for func in self.before:
-            machine.callback(getattr(event_data.model, func), event_data)
+            machine.callback(resolve_callback(event_data.model, func), event_data)
             logger.info("Executing callback '%s' before transition." % func)
 
         self._change_state(event_data)
 
         for func in self.after:
-            machine.callback(getattr(event_data.model, func), event_data)
+            machine.callback(resolve_callback(event_data.model, func), event_data)
             logger.info("Executed callback '%s' after transition." % func)
         return True
 
