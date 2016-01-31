@@ -3,6 +3,8 @@ try:
 except ImportError:
     pass
 
+import types
+
 from transitions import Machine, State, MachineError
 from unittest import TestCase
 from .utils import Stuff, InheritedStuff
@@ -150,6 +152,29 @@ class TestTransitions(TestCase):
         self.assertEquals(m.model.level, 2)
         m.model.move()
         self.assertEquals(m.model.level, 3)
+
+    def test_trigger_actions(self):
+        class OtherStuff(Stuff):
+            def move(self):
+                self.level += 1
+
+        m = Machine(OtherStuff(), states=['A', 'B', 'C'], initial='A')
+        m.add_transition('move', 'A', 'B')
+        m.add_transition('move', 'B', 'C')
+        m.add_transition('move', 'C', 'A', conditions='this_fails')
+
+        m.model.move()
+        self.assertEquals(m.model.state, 'B')
+        self.assertEquals(m.model.level, 2)
+
+        m.model.move()
+        self.assertEquals(m.model.state, 'C')
+        self.assertEquals(m.model.level, 3)
+
+        # State does not advance, but level increases
+        m.model.move()
+        self.assertEquals(m.model.state, 'C')
+        self.assertEquals(m.model.level, 4)
 
     def test_state_model_change_listeners(self):
         s = self.stuff

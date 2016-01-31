@@ -7,9 +7,10 @@ from functools import partial
 from collections import defaultdict, OrderedDict
 from six import string_types
 from .diagrams import AGraph
+import itertools
 import inspect
 import logging
-import itertools
+import types
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
@@ -92,7 +93,7 @@ class Transition(object):
                 return predicate(
                     *event_data.args, **event_data.kwargs) == self.target
 
-    def __init__(self, source, dest, conditions=None, unless=None, before=None,
+    def __init__(self, source, dest, action=None, conditions=None, unless=None, before=None,
                  after=None):
         """
         Args:
@@ -111,6 +112,7 @@ class Transition(object):
         """
         self.source = source
         self.dest = dest
+        self.action = action
         self.before = [] if before is None else listify(before)
         self.after = [] if after is None else listify(after)
 
@@ -132,6 +134,11 @@ class Transition(object):
         logger.info("Initiating transition from state %s to state %s...",
                     self.source, self.dest)
         machine = event_data.machine
+
+        if callable(self.action):
+            logger.info("Executing trigger action callback '%s'." % self.action)
+            self.action()
+
         for c in self.conditions:
             if not c.check(event_data):
                 logger.info("Transition condition failed: %s() does not " +
@@ -428,8 +435,20 @@ class Machine(object):
             after (string or list): Callables to call after the transition.
 
         """
+        try:
+            action = getattr(self.model, '_trigger_action_'.join([trigger]))
+        except AttributeError:
+            action = None
+
         if trigger not in self.events:
             self.events[trigger] = Event(trigger, self)
+
+            if hasattr(self.model, trigger):
+                # the model already has a method matching the trigger name, let's move it to one side
+
+                setattr(self.model, '_trigger_action_'.join([trigger]), getattr(self.model, trigger))
+                action = getattr(self.model, '_trigger_action_'.join([trigger]))
+
             setattr(self.model, trigger, self.events[trigger].trigger)
 
         if isinstance(source, string_types):
@@ -442,7 +461,7 @@ class Machine(object):
             after = listify(after) + listify(self.after_state_change)
 
         for s in source:
-            t = self._create_transition(s, dest, conditions, unless, before, after)
+            t = self._create_transition(s, dest, action, conditions, unless, before, after)
             self.events[trigger].add_transition(t)
 
     def add_ordered_transitions(self, states=None, trigger='next_state',
