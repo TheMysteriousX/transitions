@@ -356,3 +356,58 @@ class TestTransitions(TestCase):
         m2 = pickle.loads(dump)
         self.assertEqual(m.state, m2.state)
         m2.run()
+
+    def test___getattr___underscore_handling_regression(self):
+        m = Machine(Stuff(), states=['A', 'B', 'C'], initial='A')
+        m.add_transition('move', 'A', 'B')
+        m.add_transition('move', 'B', 'C')
+
+        callback = m.__getattr__('before_transition_move')
+        self.assertTrue(callable(callback))
+
+        type, target = m._identify_callback('on_exit_foobar')
+        self.assertEqual(type, 'on_exit')
+        self.assertEqual(target, 'foobar')
+
+        type, target = m._identify_callback('on_exitfoobar')
+        self.assertEqual(type, None)
+        self.assertEqual(target, None)
+
+        type, target = m._identify_callback('notacallback_foobar')
+        self.assertEqual(type, None)
+        self.assertEqual(target, None)
+
+        type, target = m._identify_callback('totallyinvalid')
+        self.assertEqual(type, None)
+        self.assertEqual(target, None)
+
+        type, target = m._identify_callback('before_transition__foobar')
+        self.assertEqual(type, 'before_transition')
+        self.assertEqual(target, '_foobar')
+
+        type, target = m._identify_callback('before_transition__this__user__likes__underscores')
+        self.assertEqual(type, 'before_transition')
+        self.assertEqual(target, '_this__user__likes__underscores')
+
+        type, target = m._identify_callback('_______________')
+        self.assertEqual(type, None)
+        self.assertEqual(target, None)
+
+    def test_state_and_transition_with_underscore_regression(self):
+        m = Machine(Stuff(), states=['_A', '_B', '_C'], initial='_A')
+        m.add_transition('move', '_A', '_B', before_check='increase_level')
+        m.add_transition('move', '_B', '_C', before_check='increase_level')
+        m.add_transition('move', '_C', '_A', before_check='increase_level', conditions='this_fails')
+
+        m.model.move()
+        self.assertEquals(m.model.state, '_B')
+        self.assertEquals(m.model.level, 2)
+
+        m.model.move()
+        self.assertEquals(m.model.state, '_C')
+        self.assertEquals(m.model.level, 3)
+
+        # State does not advance, but increase_level still runs
+        m.model.move()
+        self.assertEquals(m.model.state, '_C')
+        self.assertEquals(m.model.level, 4)
